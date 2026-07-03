@@ -18,6 +18,7 @@ XP_KW = dict(xp=xp, plane_chunk=256)
 
 run_dir = Path("data/run_0")
 cfg = mpw.load_config(run_dir / "config.json")
+plot3Dimage(mpw.read_emission_image(run_dir, cfg), "img/emission.png")
 
 # ---- trues-only reconstruction ------------------------------------------
 y, A = from_run(run_dir, cfg, **XP_KW)     # bin order matches by construction
