@@ -1,0 +1,21 @@
+[workspace]
+authors = ["electronics10 <electronicstenio@gmail.com>"]
+channels = ["conda-forge"]
+name = "recon-pet"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+python = "3.12.*"
+parallelproj = ">=1.10.2,<2"
+cupy = ">=14.1.1,<15"
+cuda-version = "12.*"
+matplotlib = ">=3.11.0,<4"
+
+[system-requirements]
+cuda = "12"
+
+[pypi-dependencies]
+mcgpu-pet-wrapper = { git = "https://github.com/electronics10/mcgpu-pet-wrapper.git" }
