@@ -1,20 +1,5 @@
 # A Reconstruction Tool for the MCGPU-PET Monte Carlo PET simulator
 
-## Installation
-
-Create your working directory
-```bash
-mkdir my-pet-recon
-cd my-pet-recon
-```
-
-[pixi](https://pixi.prefix.dev/latest/) is required. Try
-```bash
-pixi init
-pixi add python=3.12
-pixi add --pypi "mcgpu-recon @ git+https://github.com/electronics10/mcgpu-recon.git"
-```
-
 ## Example
 
 ### 1 Perform a simple simulation
