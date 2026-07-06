@@ -108,7 +108,6 @@ matplotlib = ">=3.11.0,<4"
 cuda = "12"
 
 [pypi-dependencies]
-mcgpu-pet-wrapper = { git = "https://github.com/electronics10/mcgpu-pet-wrapper.git" }
 mcgpu-recon = { git = "https://github.com/electronics10/mcgpu-recon.git" }
 ```
 
