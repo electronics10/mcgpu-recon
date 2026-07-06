@@ -17,6 +17,7 @@ pixi.lock
 
 # simulation run outputs (data, not code) -- adjust if you keep some
 data*/
+recon_img/
 *.raw.gz
 *.psf
 MCGPU-PET.out
