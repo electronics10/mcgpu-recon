@@ -1,7 +1,12 @@
 # A Reconstruction Tool for the MCGPU-PET Monte Carlo PET simulator
 
 ## Installation
-`pixi add --pypi "mcgpu-recon @ git+https://github.com/electronics10/mcgpu-recon.git"`
+```bash
+mkdir my-pet-recon
+cd my-pet-recon
+pixi add python=3.12
+pixi add --pypi "mcgpu-recon @ git+https://github.com/electronics10/mcgpu-recon.git"
+```
 
 ## Example
 
