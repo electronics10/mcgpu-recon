@@ -1,5 +1,16 @@
 # A Reconstruction Tool for the MCGPU-PET Monte Carlo PET simulator
 
+### Usage
+
+This project depends on [Parallelproj](https://parallelproj.readthedocs.io/en/stable/), which has complex, non-Python dependencies. Personally, I preferred to use [pixi](https://pixi.prefix.dev/latest/) (instead of conda) to manage my environment. To use this tool, simply
+```bash
+git clone https://github.com/electronics10/mcgpu-recon.git
+cd mcgpu-recon
+pixi install
+```
+
+Then run the below example.
+
 ## Example
 
 ### 1 Perform a simple simulation
@@ -62,22 +73,9 @@ x_corr = np.asarray(x_corr) if xp is np else xp.asnumpy(x_corr) if hasattr(xp, "
 plot3Dimage(x_corr, "recon_img/recon_mlem_sc_20.png")
 ```
 
-## Installation
+## Package (Developer)
 
-### Usage
-
-This project depends on [Parallelproj](https://parallelproj.readthedocs.io/en/stable/), which has complex, non-Python dependencies. Personally, I preferred to use [pixi](https://pixi.prefix.dev/latest/) (instead of conda) to manage my environment. To use this tool, simply
-```bash
-git clone https://github.com/electronics10/mcgpu-recon.git
-cd mcgpu-recon
-pixi install
-```
-
-Then run the above example.
-
-### Developer
-
-It will be a little more complex to use it as a package directly (since the repo isn't released in conda-forge). One can try to paste the following toml text into the `pixi.toml` in there own project. First, create your own project if not yet created.
+It is a little more complex to use it as a package directly (since the repo isn't released in conda-forge). One can try to paste the following toml text into the `pixi.toml` in there own project. First, create your own project if not yet created.
 
 ```bash
 mkdir my-project
