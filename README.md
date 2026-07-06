@@ -81,7 +81,7 @@ It will be a little more complex to use it as a package directly (since the repo
 
 ```bash
 mkdir my-project
-cd my project
+cd my-project
 ```
 
 Then, initiallize pixi and intall Python>=3.12.
