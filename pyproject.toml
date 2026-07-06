@@ -12,6 +12,7 @@ dependencies = [
     "parallelproj>=1.10.2",
     "cupy>=14.1.1",
     "matplotlib>=3.11.0",
+    "mcgpu-pet-wrapper @ git+https://github.com/electronics10/mcgpu-pet-wrapper.git",
 ]
 
 [tool.setuptools.packages.find]
