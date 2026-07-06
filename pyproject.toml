@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcgpu-recon"
+version = "0.1.0"
+description = "A reconstruction tool for the MCGPU-PET Monte Carlo PET simulator"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "parallelproj>=1.10.2",
+    "cupy>=14.1.1",
+    "matplotlib>=3.11.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mcgpu_recon*"]
