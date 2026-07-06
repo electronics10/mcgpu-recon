@@ -63,11 +63,11 @@ plot3Dimage(x, "recon_img/recon_mlem_trues_20.png")
 y, A = from_run(run_dir, cfg, **XP_KW)     # bin order matches by construction
 y_s, _ = from_run(run_dir, cfg, scatter=True, **XP_KW)
 x_tot = mlem(A, xp.asarray(y + y_s), n_iter=20, verbose=True)
-x_corr = mlem(A, xp.asarray(y + y_s), n_iter=20,
-             contamination=xp.asarray(y_s), verbose=True)
 x_tot = np.asarray(x_tot) if x_tot is np else xp.asnumpy(x_tot) if hasattr(xp, "asnumpy") \
     else np.asarray(x_tot.get())
 plot3Dimage(x_tot, "recon_img/recon_mlem_total_20.png")
+x_corr = mlem(A, xp.asarray(y + y_s), n_iter=20,
+             contamination=xp.asarray(y_s), verbose=True)
 x_corr = np.asarray(x_corr) if xp is np else xp.asnumpy(x_corr) if hasattr(xp, "asnumpy") \
     else np.asarray(x_corr.get())
 plot3Dimage(x_corr, "recon_img/recon_mlem_sc_20.png")
