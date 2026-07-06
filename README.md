@@ -61,3 +61,62 @@ x_corr = np.asarray(x_corr) if xp is np else xp.asnumpy(x_corr) if hasattr(xp, "
     else np.asarray(x_corr.get())
 plot3Dimage(x_corr, "recon_img/recon_mlem_sc_20.png")
 ```
+
+## Installation
+
+### Usage
+
+This project depends on [Parallelproj](https://parallelproj.readthedocs.io/en/stable/), which has complex, non-Python dependencies. Personally, I preferred to use [pixi](https://pixi.prefix.dev/latest/) (instead of conda) to manage my environment. To use this tool, simply
+```bash
+git clone https://github.com/electronics10/mcgpu-recon.git
+cd mcgpu-recon
+pixi install
+```
+
+Then run the above example.
+
+### Developer
+
+It will be a little more complex to use it as a package directly (since the repo isn't released in conda-forge). One can try to paste the following toml text into the `pixi.toml` in there own project. First, create your own project if not yet created.
+
+```bash
+mkdir my-project
+cd my project
+```
+
+Then, initiallize pixi and intall Python>=3.12.
+```bash
+pixi init
+pixi add python=3.12
+```
+
+You will see a file `pixi.toml` in your directory. Open it with a text editor and replace it with the following:
+```toml
+[workspace]
+name = "my-project"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.12.*"
+parallelproj = ">=1.10.2,<2"
+cupy = ">=14.1.1,<15"
+cuda-version = "12.*"
+matplotlib = ">=3.11.0,<4"
+
+[system-requirements]
+cuda = "12"
+
+[pypi-dependencies]
+mcgpu-pet-wrapper = { git = "https://github.com/electronics10/mcgpu-pet-wrapper.git" }
+mcgpu-recon = { git = "https://github.com/electronics10/mcgpu-recon.git" }
+```
+
+(Change the name and system requirements according to your own setup. Note that [mcgpu-pet-wrapper](https://github.com/electronics10/mcgpu-pet-wrapper.git), my another project/package, is NOT machine agnostic, check it out if you encounter any installation problem.)
+
+Finally, enter
+```bash
+pixi install
+```
+
+and pixi will install everything in the environment.
