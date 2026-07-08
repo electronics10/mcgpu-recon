@@ -100,6 +100,7 @@ python = "3.12.*"
 parallelproj = ">=1.10.2,<2"
 cupy = ">=14.1.1,<15"
 cuda-version = "12.*"
+scikit-image = ">=0.26.0,<0.27"
 matplotlib = ">=3.11.0,<4"
 
 [system-requirements]
@@ -199,5 +200,3 @@ Notes:
   ratio and needs no matching.
 - `evaluate_recon` never rescales internally — you scale-match, then measure — so
   a metric can't silently alter its input.
-- `scikit-image` is required only when you call PSNR/SSIM; the rest of the
-  library imports without it.
