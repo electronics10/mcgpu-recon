@@ -11,6 +11,7 @@ dependencies = [
     "numpy>=1.24",
     "parallelproj>=1.10.2",
     "cupy>=14.1.1",
+    scikit-image = ">=0.26.0,<0.27",
     "matplotlib>=3.11.0",
     "mcgpu-pet-wrapper @ git+https://github.com/electronics10/mcgpu-pet-wrapper.git",
 ]

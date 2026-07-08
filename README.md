@@ -117,3 +117,87 @@ pixi install
 ```
 
 and pixi will install everything in the environment.
+
+## Canonical example: evaluate scatter correction (attenuation + metrics)
+
+This is the end-to-end workflow the library is built for: reconstruct the same
+measured data three ways, and score them against a common reference so the
+numbers are interpretable.
+
+**The bracket.** A scatter-correction result means nothing on its own; it is read
+between two anchors:
+
+- **floor** — reconstruct trues+scatter with *no* correction (worst case),
+- **oracle** — reconstruct trues+scatter with the *true* scatter as the
+  `contamination` term (best any method can do; you have it because this is a
+  simulation),
+- and your **model** (or SSS) sits between them. "Fraction of the floor→oracle
+  gap closed" is the interpretable score.
+
+**The reference for metrics is the trues-only reconstruction**, not the emission
+map: every arm shares the same reconstruction artifacts, so differencing against
+the trues recon cancels them (common-mode) and isolates *scatter handling*.
+
+```python
+from pathlib import Path
+import numpy as np
+import array_api_compat.cupy as xp          # GPU; use `import numpy as xp` for CPU
+
+import mcgpu_pet_wrapper as mpw
+from mcgpu_recon import (from_run, mlem, attenuation_factors,
+                         attenuation_map_from_vox, scale_match)
+from mcgpu_recon.metrics import rois_from_activity, object_bbox, evaluate_recon
+
+XP_KW = dict(xp=xp, plane_chunk=256)
+run_dir = Path("data/run_0")
+cfg = mpw.load_config(run_dir / "config.json")
+
+# --- attenuation map straight from the simulation's own voxel grid ---------
+# mass attenuation coefficients at 511 keV (cm^2/g) per material id; look these
+# up for YOUR material list (NIST XCOM). ~0.096 for soft tissue is a fine start.
+vg = mpw.read_vox(run_dir, cfg)
+MU_RHO = {1: 0.087, 2: 0.096, 3: 0.094, 4: 0.093}   # air, water, adipose, spongiosa
+mu_per_mm = attenuation_map_from_vox(vg, MU_RHO)
+
+# --- measured data + attenuation factors -----------------------------------
+y,   A = from_run(run_dir, cfg, **XP_KW)             # trues
+y_s, _ = from_run(run_dir, cfg, scatter=True, **XP_KW)  # true scatter
+y, y_s = xp.asarray(y), xp.asarray(y_s)
+af = attenuation_factors(A, xp.asarray(mu_per_mm))   # pass as mlem(mult=...)
+
+NIT, FLOOR = 23, 0.07
+# reference (target) + the two bracket arms, ALL with identical recon settings
+x      = mlem(A, y,       n_iter=NIT, mult=af, sens_floor_frac=FLOOR)          # trues ref
+floor  = mlem(A, y + y_s, n_iter=NIT, mult=af, sens_floor_frac=FLOOR)          # no correction
+oracle = mlem(A, y + y_s, n_iter=NIT, mult=af, contamination=y_s,
+              sens_floor_frac=FLOOR)                                           # exact scatter
+# a model arm is identical with contamination = predicted_scatter (mlem-ready,
+# same plane order as A.out_shape).
+
+# --- ROIs from the known activity; reference = trues recon -----------------
+hot, bg = rois_from_activity(np.asarray(vg.activity))
+bbox    = object_bbox(np.asarray(vg.activity) > 0)
+ref     = xp.asnumpy(x)
+
+print(f"{'arm':8s} {'PSNR':>7s} {'SSIM':>7s} {'CNR':>8s}")
+# reference CNR is the achievable ceiling (trues, no scatter)
+from mcgpu_recon.metrics import cnr
+print(f"{'ref':8s} {'  -  ':>7s} {'  -  ':>7s} {cnr(ref, hot, bg):8.3f}")
+for name, arm in [("floor", floor), ("oracle", oracle)]:
+    arm_m, c = scale_match(x, arm)          # fix MLEM's global-scale freedom first
+    m = evaluate_recon(xp.asnumpy(arm_m), ref, hot, bg, bbox=bbox)
+    print(f"{name:8s} {m['psnr']:7.2f} {m['ssim']:7.3f} {m['cnr']:8.3f}")
+```
+
+Reading the output: **oracle** should beat **floor** on all three (higher PSNR/
+SSIM, CNR closer to the `ref` ceiling). A model arm's job is to land between them
+— and `(floor − model)/(floor − oracle)` on any metric is the fraction of the
+achievable gain it captured.
+
+Notes:
+- `scale_match` is applied only for PSNR/SSIM (not scale-invariant); CNR is a
+  ratio and needs no matching.
+- `evaluate_recon` never rescales internally — you scale-match, then measure — so
+  a metric can't silently alter its input.
+- `scikit-image` is required only when you call PSNR/SSIM; the rest of the
+  library imports without it.

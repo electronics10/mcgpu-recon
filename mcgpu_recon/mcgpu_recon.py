@@ -312,3 +312,76 @@ def attenuation_factors(A, mu_map_per_mm):
     xp = getattr(A, "xp", np)
     line_int = A(xp.asarray(mu_map_per_mm, dtype=xp.float32))
     return xp.exp(-line_int)
+
+
+# ---------------------------------------------------------------------------
+# Reconstruction utilities (not metrics): scale-match and mu-map construction.
+# These live here, beside the projector/mlem they serve, rather than in
+# metrics.py, because neither MEASURES anything -- scale_match resolves MLEM's
+# inherent global-scale freedom (a reconstruction concern), and
+# attenuation_map_from_vox builds a forward-model input (paired with
+# attenuation_factors below it). metrics.py is kept to pure measurements.
+# ---------------------------------------------------------------------------
+
+def _namespace(*arrays):
+    """Return the array-API namespace (numpy or cupy) of the given arrays."""
+    try:
+        import array_api_compat
+        return array_api_compat.array_namespace(*arrays)
+    except Exception:
+        return np
+
+
+def scale_match(x_ref, x, mask_frac=0.05):
+    """Global least-squares scale c minimizing ||x_ref - c*x||, returning (c*x, c).
+
+    MLEM reconstructions are correct only up to a global constant (no
+    solid-angle/efficiency model), so two reconstructions of differently-scaled
+    data (e.g. trues vs trues+scatter) sit at different levels even when their
+    SHAPE agrees. Matching that one constant before differencing isolates shape
+    error from a benign level offset.
+
+    c is fit over voxels brighter than mask_frac*max(x_ref) ONLY, so the vast
+    near-zero background (and any FOV-edge hot pixels) cannot drag the fit -- the
+    scale is set where the signal is. Works with numpy or cupy arrays.
+
+    Note: this is a reconstruction post-process, not a metric. Call it before
+    handing images to metrics.evaluate_recon; the metric then measures whatever
+    it is given, with no hidden rescaling.
+    """
+    xp = _namespace(x_ref, x)
+    m = x_ref > mask_frac * float(x_ref.max())
+    c = float(xp.sum((x_ref * x)[m]) / xp.sum((x * x)[m]))
+    return c * x, c
+
+
+def attenuation_map_from_vox(vg, mu_rho):
+    """Build a 511-keV linear attenuation map (1/mm) from a VoxelGrid.
+
+    Pairs with attenuation_factors(): this makes the mu-map, that integrates it
+    along the LORs. Reading mu straight from the simulation's own voxel grid
+    gives an EXACT (oracle) attenuation map for simulation studies -- for real
+    data you would instead derive mu from a CT.
+
+    Parameters
+    ----------
+    vg : mcgpu_pet_wrapper VoxelGrid
+        Has integer `material_id` and float `density` arrays, shape (Nz,Ny,Nx).
+    mu_rho : dict {material_id: mass attenuation coefficient at 511 keV, cm^2/g}
+        At 511 keV Compton scattering dominates, so all soft tissues are close
+        to water (~0.096 cm^2/g) and the DENSITY term carries most of the
+        variation; a uniform 0.096 is a reasonable first approximation. Use
+        per-material values (e.g. NIST XCOM) for your material list to refine.
+        Any material_id absent from the dict is left at mu = 0.
+
+    Returns
+    -------
+    mu_per_mm : (Nz,Ny,Nx) float32, ready for attenuation_factors(A, mu_per_mm).
+    """
+    mat = np.asarray(vg.material_id)
+    rho = np.asarray(vg.density, dtype=np.float32)
+    mu_per_cm = np.zeros_like(rho, dtype=np.float32)
+    for mid, mrho in mu_rho.items():
+        sel = mat == int(mid)
+        mu_per_cm[sel] = float(mrho) * rho[sel]      # (cm^2/g)*(g/cm^3) = 1/cm
+    return (mu_per_cm / 10.0).astype(np.float32)     # 1/cm -> 1/mm (mm geometry)
