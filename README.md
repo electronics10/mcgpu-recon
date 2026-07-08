@@ -100,7 +100,6 @@ python = "3.12.*"
 parallelproj = ">=1.10.2,<2"
 cupy = ">=14.1.1,<15"
 cuda-version = "12.*"
-scikit-image = ">=0.26.0,<0.27"
 matplotlib = ">=3.11.0,<4"
 
 [system-requirements]
@@ -176,27 +175,37 @@ oracle = mlem(A, y + y_s, n_iter=NIT, mult=af, contamination=y_s,
 # same plane order as A.out_shape).
 
 # --- ROIs from the known activity; reference = trues recon -----------------
-hot, bg = rois_from_activity(np.asarray(vg.activity))
-bbox    = object_bbox(np.asarray(vg.activity) > 0)
-ref     = xp.asnumpy(x)
+hot, warm = rois_from_activity(np.asarray(vg.activity))   # bright / warm-tissue bg
+bbox = object_bbox(np.asarray(vg.activity) > 0)
+act  = np.asarray(vg.activity)                            # true ratio for CRC
+ref  = xp.asnumpy(x)
 
-print(f"{'arm':8s} {'PSNR':>7s} {'SSIM':>7s} {'CNR':>8s}")
-# reference CNR is the achievable ceiling (trues, no scatter)
-from mcgpu_recon.metrics import cnr
-print(f"{'ref':8s} {'  -  ':>7s} {'  -  ':>7s} {cnr(ref, hot, bg):8.3f}")
+print(f"{'arm':8s} {'PSNR':>7s} {'SSIM':>7s} {'CRC':>7s} {'CNR':>7s} {'SNR':>8s}")
 for name, arm in [("floor", floor), ("oracle", oracle)]:
     arm_m, c = scale_match(x, arm)          # fix MLEM's global-scale freedom first
-    m = evaluate_recon(xp.asnumpy(arm_m), ref, hot, bg, bbox=bbox)
-    print(f"{name:8s} {m['psnr']:7.2f} {m['ssim']:7.3f} {m['cnr']:8.3f}")
+    m = evaluate_recon(xp.asnumpy(arm_m), ref, act, hot, warm, bbox=bbox)
+    print(f"{name:8s} {m['psnr']:7.2f} {m['ssim']:7.3f} {m['crc']:7.3f} "
+          f"{m['cnr']:7.3f} {m['snr']:8.3f}")
 ```
 
-Reading the output: **oracle** should beat **floor** on all three (higher PSNR/
-SSIM, CNR closer to the `ref` ceiling). A model arm's job is to land between them
-— and `(floor − model)/(floor − oracle)` on any metric is the fraction of the
-achievable gain it captured.
+Reading the output — the metrics split into two groups that answer different
+questions:
+
+- **PSNR, SSIM, CRC** measure ACCURACY (bias). Oracle should beat floor: higher
+  PSNR/SSIM, and CRC nearer 1.0 (full contrast recovery). A model arm's job is to
+  land between floor and oracle; `(model − floor)/(oracle − floor)` on CRC is the
+  fraction of achievable accuracy it recovered.
+- **CNR, SNR** are NOISE-sensitive (they divide by background std). Scatter
+  correction subtracts counts, which raises Poisson variance, so the corrected
+  image is more accurate but NOISIER — oracle CNR/SNR may be FLAT or LOWER than
+  floor. This is the bias–variance tradeoff, not a failure; report it as the
+  noise cost of correction alongside the accuracy gain.
 
 Notes:
-- `scale_match` is applied only for PSNR/SSIM (not scale-invariant); CNR is a
-  ratio and needs no matching.
+- `scale_match` matters only for PSNR/SSIM (not scale-invariant); CRC/CNR/SNR are
+  ratios and need no matching.
+- In reconstructed PET the surrounding air is forced to ~0 by the sensitivity
+  floor, so it is not a usable noise region; the warm in-object region serves as
+  both the contrast reference and the noise region (NEMA-style).
 - `evaluate_recon` never rescales internally — you scale-match, then measure — so
   a metric can't silently alter its input.
