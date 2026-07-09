@@ -345,9 +345,8 @@ def scale_match(x_ref, x, mask_frac=0.05):
     near-zero background (and any FOV-edge hot pixels) cannot drag the fit -- the
     scale is set where the signal is. Works with numpy or cupy arrays.
 
-    Note: this is a reconstruction post-process, not a metric. Call it before
-    handing images to metrics.evaluate_recon; the metric then measures whatever
-    it is given, with no hidden rescaling.
+    Call it before handing images to metrics.evaluate_recon; the metric then 
+    measures whatever it is given, with no hidden rescaling.
     """
     xp = _namespace(x_ref, x)
     m = x_ref > mask_frac * float(x_ref.max())
