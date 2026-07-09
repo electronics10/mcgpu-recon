@@ -69,7 +69,7 @@ x_gt   = mlem(A, y + y_s, n_iter=NIT, mult=af, sens_floor_frac=FLOOR, verbose=Tr
               contamination=y_s)                                                     # exact scatter
 
 plot3Dimage(xp.asnumpy(x),     run_dir/"recon_img/mlem_trues_only.png", "MLEM trues only")
-plot3Dimage(xp.asnumpy(x_tot), run_dir/"recon_img/mlem_total.png",      f"MLEM total, SF={sf*100:.2f}% (uncorrected)")
+plot3Dimage(xp.asnumpy(x_tot), run_dir/"recon_img/mlem_tot.png",       f"MLEM total, SF={sf*100:.2f}% (uncorrected)")
 plot3Dimage(xp.asnumpy(x_gt),  run_dir/"recon_img/mlem_gt.png",         "MLEM ground truth (corrected with known scatter)")
 
 # --- residual images ------------------------------------------
@@ -88,6 +88,8 @@ m = evaluate_recon(xp.asnumpy(x_tot), xp.asnumpy(x_gt), bbox=bbox)
 print(f"{"floor":8s} {m['psnr']:7.2f} {m['ssim']:7.3f}")
 ```
 
+![mlem_total](demo_img/mlem_tot.png) ![mlem_gt](demo_img/mlem_gt.png)
+![residual_total](demo_img/residual_tot.png)
 
 ## Package (Developer)
 
