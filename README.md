@@ -23,7 +23,7 @@ run_dir = Path("data/run_0")
 cfg = mpw.default_config()
 cfg["sinogram"]["span"] = 1
 mpw.validate_config(cfg)
-voxel_space = mpw.nema_iq_preclinical(cfg, hot_activity_Bq_per_mL=200000)
+voxel_space = mpw.nema_iq_preclinical(cfg, hot_activity_Bq_per_mL=20000)
 mpw.build_run(run_dir, cfg, voxel_space)
 simulation = mpw.Runner()(run_dir, "overwrite")
 ```
