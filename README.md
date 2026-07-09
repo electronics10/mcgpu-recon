@@ -61,6 +61,7 @@ y, y_s = xp.asarray(y), xp.asarray(y_s)
 sf = float(y_s.sum() / (y_s.sum() + y.sum()))
 af = attenuation_factors(A, xp.asarray(mu_per_mm))   # pass as mlem(mult=...)
 
+# ---- reconstruction -----------------------------------------
 NIT, FLOOR = 23, 0.07
 # reference (target) + the two arms, ALL with identical recon settings
 x      = mlem(A, y,       n_iter=NIT, mult=af, sens_floor_frac=FLOOR, verbose=True)  # trues ref
