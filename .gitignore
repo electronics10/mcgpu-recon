@@ -21,4 +21,4 @@ recon_img/
 *.raw.gz
 *.psf
 MCGPU-PET.out
-test.py
+test*.py
