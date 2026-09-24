@@ -1,6 +1,8 @@
 """
-3D MLEM reconstruction of MCGPU-PET span=1 sinograms with
-parallelproj's LOW-LEVEL Joseph projectors (joseph3d_fwd / joseph3d_back).
+System model for MCGPU-PET span=1 sinograms: the projector A (forward) and its
+adjoint A^T (back-projection), built on parallelproj's LOW-LEVEL Joseph
+projectors (joseph3d_fwd / joseph3d_back). Also: from_run (data + matching
+projector in one call) and adjoint_test.
 
 Why low-level ("Path A")
 ------------------------
@@ -92,7 +94,6 @@ import parallelproj
 
 from mcgpu_pet_wrapper import lors
 from mcgpu_pet_wrapper.config import voxel_space_shape_zyx, grid_size_mm
-
 
 class MCGPUProjector:
     """Mirror-symmetrized Joseph projector for MCGPU-PET span=1 sinograms.
@@ -214,74 +215,6 @@ class MCGPUProjector:
         return img
 
 
-def mlem(A, y, n_iter=20, x0=None, mult=None, contamination=None,
-         sens_floor_frac=0.025, eps=1e-8, verbose=False, callback=None):
-    """Maximum-Likelihood Expectation Maximization (Shepp & Vardi 1982).
-
-    Model:  ybar = mult * (A x) + contamination,   y ~ Poisson(ybar)
-
-    Update: x <- x / sens * A^T( mult * y / ybar ),  sens = A^T(mult)
-
-    Standard properties (theorems for the exact Poisson model):
-      * each update does not decrease the Poisson log-likelihood;
-      * count matching after every full update:
-            sum(sens * x_k) = sum(y * Ax/(Ax + contam-part))  and with
-            contamination == 0 exactly  sum(mult * A x_k) = sum(y)  for k >= 1;
-      * convergence from below in contrast: bulk intensity appears in the
-        first iterations, edges/peaks keep sharpening for tens of iterations
-        (why peak values grow with n_iter even though totals are matched).
-
-    Parameters
-    ----------
-    A : linear operator with __call__ (forward) and .adjoint.
-    y : measured sinogram, shape A.out_shape, non-negative.
-    mult : optional multiplicative factors, same shape as y (attenuation and/or
-        normalization). None means 1.
-    contamination : optional additive expectation, same shape as y (scatter
-        and/or randoms estimate). None means 0. NOTE: with a contamination
-        term, reconstruct the TOTAL (trues+scatter) sinogram against it; or
-        reconstruct trues-only with contamination=None.
-    sens_floor_frac : float, optional
-        Voxels whose sensitivity s_j = A^T(mult) is below
-        sens_floor_frac * max(s) are EXCLUDED from the support (held at 0).
-        Rationale: the MLEM update divides by s_j, so FOV-edge/corner voxels
-        with tiny s_j amplify backprojected noise into "hot pixels". Flooring
-        the support removes the cause (default 2.5% of peak sensitivity). Set to
-        0.0 to disable (recovers the old permissive behavior).
-    callback : optional f(k, x) per iteration.
-    """
-    xp = getattr(A, "xp", np)
-    y = xp.asarray(y, dtype=xp.float32)
-
-    ones = xp.ones(A.out_shape, dtype=xp.float32) if mult is None \
-        else xp.asarray(mult, dtype=xp.float32)
-    sens = A.adjoint(ones)
-    thresh = max(sens_floor_frac, eps) * float(sens.max())
-    support = sens > thresh
-    sens_safe = xp.where(support, sens, 1.0)
-
-    x = xp.ones(A.in_shape, dtype=xp.float32) if x0 is None \
-        else xp.asarray(x0, dtype=xp.float32)
-    x = xp.where(support, x, 0.0)
-
-    for k in range(n_iter):
-        ybar = A(x)
-        if mult is not None:
-            ybar = ybar * ones
-        if contamination is not None:
-            ybar = ybar + contamination
-        ratio = y / xp.maximum(ybar, eps)
-        if mult is not None:
-            ratio = ratio * ones
-        x = xp.where(support, x * A.adjoint(ratio) / sens_safe, 0.0)
-        if verbose:
-            print(f"  MLEM iter {k+1:3d}/{n_iter}  "
-                  f"sum(model)={float(ybar.sum()):.6g}  sum(y)={float(y.sum()):.6g}")
-        if callback is not None:
-            callback(k, x)
-    return x
-
-
 def from_run(run_dir, config, scatter=False, **projector_kwargs):
     """Load a span=1 sinogram and build its matching projector in one step.
 
@@ -295,92 +228,19 @@ def from_run(run_dir, config, scatter=False, **projector_kwargs):
     return y.astype(np.float32), A
 
 
-def attenuation_factors(A, mu_map_per_mm):
-    """Per-bin attenuation factors exp(-integral of mu along the LOR), using
-    the SAME mirror-symmetrized geometry as A (so factors align with bins).
-
-    mu_map_per_mm : (Nz, Ny, Nx) linear attenuation coefficients in 1/mm at
-    511 keV (e.g. water ~ 0.0096/mm). Returns array of shape A.out_shape to
-    pass as mlem(..., mult=...).
-
-    Approximation note: the exact factor for a mixed-orientation bin is the
-    count-weighted mix of exp(-int_alpha) and exp(-int_beta); we use
-    exp(-0.5*(int_alpha+int_beta)), i.e. the geometric mean, consistent with
-    the mean-line forward model and exact when the two mirror integrals are
-    equal (always true for direct planes).
+def adjoint_test(A, n_trials=3, seed=0):
+    """Check that A.adjoint is the adjoint (transpose) of A:
+        <A x, y> = <x, A^T y>   for random x >= 0, y >= 0.
+    Returns the list of relative errors |<Ax,y> - <x,A^T y>| / |<Ax,y>|.
+    Expect ~1e-6 .. 1e-4 in float32. Much larger means every EM step is wrong.
     """
     xp = getattr(A, "xp", np)
-    line_int = A(xp.asarray(mu_map_per_mm, dtype=xp.float32))
-    return xp.exp(-line_int)
-
-
-# ---------------------------------------------------------------------------
-# Reconstruction utilities (not metrics): scale-match and mu-map construction.
-# These live here, beside the projector/mlem they serve, rather than in
-# metrics.py, because neither MEASURES anything -- scale_match resolves MLEM's
-# inherent global-scale freedom (a reconstruction concern), and
-# attenuation_map_from_vox builds a forward-model input (paired with
-# attenuation_factors below it). metrics.py is kept to pure measurements.
-# ---------------------------------------------------------------------------
-
-def _namespace(*arrays):
-    """Return the array-API namespace (numpy or cupy) of the given arrays."""
-    try:
-        import array_api_compat
-        return array_api_compat.array_namespace(*arrays)
-    except Exception:
-        return np
-
-
-def scale_match(x_ref, x, mask_frac=0.05):
-    """Global least-squares scale c minimizing ||x_ref - c*x||, returning (c*x, c).
-
-    MLEM reconstructions are correct only up to a global constant (no
-    solid-angle/efficiency model), so two reconstructions of differently-scaled
-    data (e.g. trues vs trues+scatter) sit at different levels even when their
-    SHAPE agrees. Matching that one constant before differencing isolates shape
-    error from a benign level offset.
-
-    c is fit over voxels brighter than mask_frac*max(x_ref) ONLY, so the vast
-    near-zero background (and any FOV-edge hot pixels) cannot drag the fit -- the
-    scale is set where the signal is. Works with numpy or cupy arrays.
-
-    Call it before handing images to metrics.evaluate_recon; the metric then 
-    measures whatever it is given, with no hidden rescaling.
-    """
-    xp = _namespace(x_ref, x)
-    m = x_ref > mask_frac * float(x_ref.max())
-    c = float(xp.sum((x_ref * x)[m]) / xp.sum((x * x)[m]))
-    return c * x, c
-
-
-def attenuation_map_from_vox(vg, mu_rho):
-    """Build a 511-keV linear attenuation map (1/mm) from a VoxelGrid.
-
-    Pairs with attenuation_factors(): this makes the mu-map, that integrates it
-    along the LORs. Reading mu straight from the simulation's own voxel grid
-    gives an EXACT (oracle) attenuation map for simulation studies -- for real
-    data you would instead derive mu from a CT.
-
-    Parameters
-    ----------
-    vg : mcgpu_pet_wrapper VoxelGrid
-        Has integer `material_id` and float `density` arrays, shape (Nz,Ny,Nx).
-    mu_rho : dict {material_id: mass attenuation coefficient at 511 keV, cm^2/g}
-        At 511 keV Compton scattering dominates, so all soft tissues are close
-        to water (~0.096 cm^2/g) and the DENSITY term carries most of the
-        variation; a uniform 0.096 is a reasonable first approximation. Use
-        per-material values (e.g. NIST XCOM) for your material list to refine.
-        Any material_id absent from the dict is left at mu = 0.
-
-    Returns
-    -------
-    mu_per_mm : (Nz,Ny,Nx) float32, ready for attenuation_factors(A, mu_per_mm).
-    """
-    mat = np.asarray(vg.material_id)
-    rho = np.asarray(vg.density, dtype=np.float32)
-    mu_per_cm = np.zeros_like(rho, dtype=np.float32)
-    for mid, mrho in mu_rho.items():
-        sel = mat == int(mid)
-        mu_per_cm[sel] = float(mrho) * rho[sel]      # (cm^2/g)*(g/cm^3) = 1/cm
-    return (mu_per_cm / 10.0).astype(np.float32)     # 1/cm -> 1/mm (mm geometry)
+    rng = np.random.default_rng(seed)
+    errs = []
+    for _ in range(n_trials):
+        x = xp.asarray(rng.random(A.in_shape, dtype=np.float32))
+        y = xp.asarray(rng.random(A.out_shape, dtype=np.float32))
+        lhs = float(xp.sum(A(x) * y, dtype=xp.float64))
+        rhs = float(xp.sum(x * A.adjoint(y), dtype=xp.float64))
+        errs.append(abs(lhs - rhs) / abs(lhs))
+    return errs
