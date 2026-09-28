@@ -14,9 +14,11 @@ cupy = ">=14.1.1,<15"
 cuda-version = "12.*"
 scikit-image = ">=0.26.0,<0.27"
 matplotlib = ">=3.11.0,<4"
+pytest = ">=9.1.1,<10"
 
 [system-requirements]
 cuda = "12"
 
 [pypi-dependencies]
 mcgpu-pet-wrapper = { git = "https://github.com/electronics10/mcgpu-pet-wrapper.git" }
+mcgpu-recon = { path = ".", editable = true }
