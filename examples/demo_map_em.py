@@ -29,8 +29,9 @@ Prerequisite: a span=1 NEMA IQ run, e.g. as in the README:
 Run (on the GPU machine, from the repo root):
     pixi run python examples/demo_map_em.py data/run_0 --dose 0.1
 
-Runtime ~ (n_beta * 3 + 1) * n_iter_map * 2.6 s for the default geometry:
-the defaults (5 betas, 60 iterations, warm start from MLEM) take ~40 min.
+Runtime: the defaults (5 betas, 60 iterations, warm start from MLEM) take
+~17 min on a TITAN RTX (~1 s per MAP iteration on average; RDP is slower than
+the quadratic priors because of its line search).
 """
 
 from __future__ import annotations

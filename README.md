@@ -102,7 +102,7 @@ neighbourhood penalty $R$ (26 neighbours, 3x3x3). Penalties and weights live in
 |---|---|---|---|
 | `QuadraticPrior` | `uniform_weights` | De Pierro (exact, monotone, convergent) | PET-only smoothing |
 | `QuadraticPrior` | `bowsher_weights(mr, B)` | De Pierro | MR-guided: each voxel is smoothed only toward its `B` most MR-similar neighbours |
-| `RDPrior` (relative difference prior) | `uniform_weights` | OSL (one-step-late) | edge-preserving PET-only penalty; `gamma` controls edge preservation |
+| `RDPrior` (relative difference prior) | `uniform_weights` | EM-preconditioned gradient ascent with line search (monotone) | edge-preserving PET-only penalty; `gamma` controls edge preservation |
 
 ```Python
 from mcgpu_recon import (map_em, mlem, QuadraticPrior, RDPrior, uniform_weights,
@@ -121,7 +121,8 @@ Notes:
 - Stronger `beta` converges more slowly. Check convergence by comparing, e.g., 60 and 120
   iterations for your largest `beta` (`return_history=True` gives the objective per iteration).
 - With `beta=0`, `map_em` returns exactly the `mlem` result.
-- OSL (used for RDP) has no convergence guarantee; `map_em` warns if its denominator had to be
+- RDP uses `method="gradient"` by default (monotone). OSL is available via `method="osl"` for
+  comparison only: it has no convergence guarantee, and `map_em` warns if its denominator had to be
   clamped, which means `beta` is too large for OSL.
 
 Checks and helpers: `adjoint_test(A)` (should be ~1e-5 or smaller), `binomial_thin(y, p)`

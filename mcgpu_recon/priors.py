@@ -249,7 +249,8 @@ class RDPrior:
         R(x) = sum_pairs omega_jk (x_j - x_k)^2 / (x_j + x_k + gamma |x_j - x_k|)
 
     gamma >= 0 controls edge preservation (larger gamma = edges kept more).
-    gamma = 2 is a common choice. Not quadratic, so map_em uses OSL for it.
+    gamma = 2 is a common choice. Not quadratic, so map_em uses its line-search
+    gradient update for it (method="gradient").
     Defined for x >= 0; a pair with x_j = x_k = 0 contributes 0.
     """
     quadratic = False
