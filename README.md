@@ -1,5 +1,7 @@
 # A Reconstruction Tool for the MCGPU-PET Monte Carlo PET simulator
 
+> Rewriting or changing the system model? Read [REWRITE_NOTES.md](REWRITE_NOTES.md) first: it covers a sensitivity bug found in the projector, its fix, and the checks to keep.
+
 ### Usage
 
 This project depends on [Parallelproj](https://parallelproj.readthedocs.io/en/stable/), which has complex, non-Python dependencies. Personally, I preferred to use [pixi](https://pixi.prefix.dev/latest/) (instead of conda) to manage my environment. To use this tool, simply

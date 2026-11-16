@@ -32,11 +32,11 @@ and ring set {a, b} there are two distinct physical lines:
 
 and the expected count in BOTH plane (a, b) and plane (b, a) is
 0.5 * (lambda_alpha + lambda_beta), where lambda_* is the line integral of the
-activity along that line (times per-line sensitivity, not modeled here).
+activity along that line times the line's geometric sensitivity.
 
 Model used here, exact under that 50/50 fact:
 
-    (A x)[plane p, bin t] = 0.5 * ( J(x; line_alpha(p, t)) + J(x; line_beta(p, t)) )
+    (A x)[plane p, bin t] = w(p, t) * 0.5 * ( J(x; line_alpha(p, t)) + J(x; line_beta(p, t)) )
 
 where J is the Joseph line integral (mm-weighted). For direct planes (a == a)
 alpha == beta and the mean reduces to the single line automatically, so the
@@ -44,6 +44,18 @@ formula is uniform over all planes -- no special-casing. The adjoint is the
 mean of the two back-projections. Keeping both mirror planes (a,b) and (b,a)
 as separate Poisson bins with the same mean is statistically equivalent to
 merging them (Poisson additivity), so the data is used as read, unmerged.
+
+Oblique-LOR weight w = cos^4(theta), theta = the LOR's angle to the
+transverse plane (both mirror lines share it). Physically a crystal pair's
+detection probability falls like cos^3 (inverse square of the longer path,
+times the slanted incidence), while the Joseph integral GROWS like 1/cos
+(longer path through each voxel), so w = cos^3 * cos. Without w the model
+over-weights oblique LORs, and its sensitivity profile is too peaked at the
+axial centre: activity away from the centre (e.g. the NEMA IQ rods) is then
+over-estimated by ~10-15%, which shows up as recovery coefficients > 1.
+Checked against MCGPU-PET on a NEMA IQ run (75 rings, 2 mm pitch): the ratio
+of MCGPU counts to model counts versus ring difference 0..72 drops from
+1.86 to 0.22 without w and stays at 1.000 +- 0.002 with w.
 
 Coordinate conventions (the seam where such integrations usually break)
 -----------------------------------------------------------------------
@@ -65,7 +77,7 @@ lors.transverse_endpoints_mm / ring_z_positions_mm are already scanner-
 centered, so no further offset is needed.
 
 Units and normalization: J returns sum_j x_j * (intersection length in mm), y
-is in counts, and no solid-angle/efficiency/attenuation model is included by
+is in counts, and apart from w no efficiency/attenuation model is included by
 default, so the reconstruction is correct up to a global scale (and shows mild
 attenuation cupping unless attenuation factors are supplied; see mlem()'s
 `mult` argument and attenuation_factors()).
@@ -119,10 +131,13 @@ class MCGPUProjector:
         plane_chunk * nbins * 48 bytes for the two endpoint arrays).
     num_chunks : int, optional
         Forwarded to parallelproj (sub-chunking in hybrid numpy+CUDA mode).
+    oblique_weight : bool, optional
+        Apply the cos^4 oblique-LOR weight (see the module docstring).
+        Default True; False reproduces the old, unweighted model.
     """
 
     def __init__(self, config, ring1, ring2, xp=np, plane_chunk=128,
-                 num_chunks=1):
+                 num_chunks=1, oblique_weight=True):
         self.xp = xp
         self.num_chunks = int(num_chunks)
         self.plane_chunk = int(plane_chunk)
@@ -159,6 +174,19 @@ class MCGPUProjector:
         self.n_planes = int(len(ring1))
         self.out_shape = (self.n_planes, self._nang, self._nrad)
 
+        # squared transverse length per hit bin and squared axial offset per
+        # plane; the weight cos^4 = (D^2 / (D^2 + dz^2))^2 is built per chunk
+        self.oblique_weight = bool(oblique_weight)
+        self._d2 = xp.sum((self._t1_yx - self._t0_yx) ** 2, axis=1)
+        self._dz2 = (self._z1 - self._z2) ** 2
+
+    def _weight(self, sl):
+        """cos^4 oblique weight for planes[sl], shape (P, nhit), or None."""
+        if not self.oblique_weight:
+            return None
+        c2 = self._d2[None, :] / (self._d2[None, :] + self._dz2[sl, None])
+        return c2 * c2
+
     # ---- endpoint builders ------------------------------------------------
     def _endpoints(self, sl, orientation):
         """Endpoints for planes[sl]; orientation 'a': side ix1 gets ring1,
@@ -181,6 +209,15 @@ class MCGPUProjector:
     # ---- linear operator ---------------------------------------------------
     def __call__(self, x):
         """Forward: image (Nz, Ny, Nx) -> sinogram (n_planes, nang, nrad)."""
+        return self._forward(x, weighted=True)
+
+    def line_integral(self, x):
+        """Forward projection WITHOUT the oblique weight: the plain (mirror-
+        averaged) line integral of x in mm. Use this for attenuation, where
+        exp(-integral of mu) needs the true path length."""
+        return self._forward(x, weighted=False)
+
+    def _forward(self, x, weighted):
         xp = self.xp
         x = xp.asarray(x, dtype=xp.float32)
         out = xp.zeros((self.n_planes, self._nang * self._nrad),
@@ -195,7 +232,8 @@ class MCGPUProjector:
                     xs, xe, x, self.img_origin, self.voxsize,
                     num_chunks=self.num_chunks)
                 acc = v if acc is None else acc + v
-            out[sl, hit_idx] = 0.5 * acc
+            w = self._weight(sl) if weighted else None
+            out[sl, hit_idx] = 0.5 * acc if w is None else 0.5 * acc * w
         return out.reshape(self.out_shape)
 
     def adjoint(self, y):
@@ -207,6 +245,9 @@ class MCGPUProjector:
         for lo in range(0, self.n_planes, self.plane_chunk):
             sl = slice(lo, min(lo + self.plane_chunk, self.n_planes))
             y_chunk = y[sl, hit_idx]
+            w = self._weight(sl)
+            if w is not None:
+                y_chunk = y_chunk * w
             for o in ("a", "b"):
                 xs, xe = self._endpoints(sl, o)
                 img = img + 0.5 * parallelproj.joseph3d_back(

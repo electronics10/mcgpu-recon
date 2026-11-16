@@ -56,5 +56,8 @@ def attenuation_factors(A, mu_map_per_mm):
     equal (always true for direct planes).
     """
     xp = getattr(A, "xp", np)
-    line_int = A(xp.asarray(mu_map_per_mm, dtype=xp.float32))
+    # A(.) includes the oblique-LOR sensitivity weight; attenuation needs the
+    # plain path-length integral (falls back to A for simple operators)
+    project = getattr(A, "line_integral", A)
+    line_int = project(xp.asarray(mu_map_per_mm, dtype=xp.float32))
     return xp.exp(-line_int)

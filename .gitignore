@@ -22,3 +22,5 @@ recon_img/
 *.psf
 MCGPU-PET.out
 test*.py
+# weekly reports (kept locally / in Obsidian, not in the repo)
+report/
